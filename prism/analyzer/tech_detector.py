@@ -16,8 +16,8 @@ class TechStackDetector:
 
     Strategy:
     1. Extract tech mentions from titles, headlines, skills
-    2. Weight by recency and role seniority
-    3. Score confidence based on frequency
+    2. Prefer engineering-relevant profiles when sampling
+    3. Score confidence based on profile coverage
     """
 
     # Technology keywords mapped to categories
@@ -76,6 +76,44 @@ class TechStackDetector:
             "prometheus": ["prometheus"],
         }
     }
+
+    TECH_ROLE_KEYWORDS = [
+        "engineer",
+        "engineering",
+        "developer",
+        "software",
+        "backend",
+        "frontend",
+        "full stack",
+        "platform",
+        "infrastructure",
+        "data",
+        "machine learning",
+        "ml",
+        "ai",
+        "security",
+        "devops",
+        "sre",
+        "architect",
+        "technical",
+        "product engineer",
+    ]
+
+    NON_TECH_ROLE_KEYWORDS = [
+        "advisor",
+        "investor",
+        "board",
+        "sales",
+        "revenue",
+        "marketing",
+        "operations",
+        "partnerships",
+        "recruiting",
+        "talent",
+        "finance",
+        "legal",
+        "chief revenue",
+    ]
 
     def __init__(self):
         """
@@ -149,6 +187,24 @@ class TechStackDetector:
 
         return signals
 
+    def select_relevant_employees(
+        self,
+        employees: List[Employee],
+        limit: int
+    ) -> List[Employee]:
+        """
+        Prefer engineering-heavy profiles when the API returns a broad employee mix.
+        """
+        if len(employees) <= limit:
+            return employees
+
+        ranked = sorted(
+            employees,
+            key=self._employee_relevance_score,
+            reverse=True
+        )
+        return ranked[:limit]
+
     def _extract_tech_from_employee(self, employee: Employee) -> List[tuple]:
         """
         Extract all tech mentions from a single employee profile.
@@ -193,6 +249,31 @@ class TechStackDetector:
                     detected.append((tech_name, category, evidence))
 
         return detected
+
+    def _employee_relevance_score(self, employee: Employee) -> int:
+        text_parts = [
+            employee.current_title or "",
+            employee.headline or "",
+            " ".join(employee.skills),
+            " ".join(
+                part
+                for exp in employee.experience
+                for part in [exp.title or "", exp.description or ""]
+            ),
+        ]
+        text = " ".join(text_parts).lower()
+
+        score = len(self._extract_tech_from_employee(employee)) * 5
+
+        for keyword in self.TECH_ROLE_KEYWORDS:
+            if keyword in text:
+                score += 3
+
+        for keyword in self.NON_TECH_ROLE_KEYWORDS:
+            if keyword in text:
+                score -= 2
+
+        return score
 
     def group_by_category(self, signals: List[TechSignal]) -> Dict[str, List[TechSignal]]:
         """

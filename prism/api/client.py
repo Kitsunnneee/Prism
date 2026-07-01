@@ -76,9 +76,14 @@ class CrustDataClient:
                 print(f"[Cache Hit] {endpoint}")
                 return cached
 
-        # Make actual request
+        # Make actual request with timeout
         url = f"{self.BASE_URL}{endpoint}"
-        response = self.session.post(url, json=payload)
+        try:
+            response = self.session.post(url, json=payload, timeout=30)
+        except requests.exceptions.Timeout:
+            raise Exception(f"Request timed out after 30 seconds for {endpoint}")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Network error: {str(e)}")
 
         # Handle errors
         if response.status_code != 200:
@@ -131,6 +136,7 @@ class CrustDataClient:
         self,
         company_name: str,
         limit: int = 10
+        
     ) -> List[Employee]:
         """
         Search for employees at a company.

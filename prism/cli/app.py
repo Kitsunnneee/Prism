@@ -82,16 +82,22 @@ def _company_panel(company: Company) -> Panel:
 def _fetch_employees(
     client: CrustDataClient,
     company: Company,
-    sample_size: int
+    sample_size: int,
+    detector: TechStackDetector
 ) -> List[Employee]:
+    # Fetch more candidates than requested to filter for relevant roles
+    # Cap at 200 to avoid excessive API costs
+    candidate_limit = min(max(sample_size * 2, 20), 200)
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console,
         transient=True
     ) as progress:
-        task = progress.add_task(f"Fetching {sample_size} employee profiles...", total=None)
-        employees = client.search_employees(company_name=company.name, limit=sample_size)
+        task = progress.add_task(f"Fetching employee profiles for {company.name}...", total=None)
+        candidates = client.search_employees(company_name=company.name, limit=candidate_limit)
+        employees = detector.select_relevant_employees(candidates, sample_size)
 
         if employees:
             progress.update(task, description=f"Analyzing {len(employees)} profiles...")
@@ -224,11 +230,11 @@ def run_analysis(
 
     console.print(_company_panel(company))
 
-    employees = _fetch_employees(client, company, sample_size)
+    detector = TechStackDetector()
+    employees = _fetch_employees(client, company, sample_size, detector)
     if not employees:
         return False
 
-    detector = TechStackDetector()
     signals = [
         signal
         for signal in detector.detect_tech_stack(employees)
@@ -390,7 +396,7 @@ def interactive():
                     domain=domain,
                     sample_size=sample_size,
                     verbose=verbose,
-                    min_confidence=0.1,
+                    min_confidence=0.0,  # Show all detected technologies in interactive mode
                     insights=use_insights
                 )
             except Exception as e:
